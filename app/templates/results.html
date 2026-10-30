@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Breath VOC Monitor - Results</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+    <script>
+        // Auto-refresh every 10s, but keep any ?date=... filter in place
+        setTimeout(function() {
+            window.location.reload();
+        }, 10000);
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background: #f5f6f8;
+            color: #222;
+        }
+        h1 { margin-bottom: 5px; }
+        h2 { margin-top: 50px; }
+        .subtitle { color: #666; margin-bottom: 25px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        th {
+            background: #2c3e50;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        tr:hover { background: #f0f4f8; }
+        tr.spike-row { background: #fff4e6; }
+        .pred-COPD { color: #c0392b; font-weight: bold; }
+        .pred-SMOKERS { color: #d35400; font-weight: bold; }
+        .pred-CONTROL { color: #27ae60; font-weight: bold; }
+        .pred-UNAVAILABLE { color: #999; font-style: italic; }
+        .confidence-bar-bg {
+            background: #e0e0e0;
+            border-radius: 4px;
+            width: 100px;
+            height: 10px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .confidence-bar-fill { background: #3498db; height: 10px; border-radius: 4px; }
+        .dose-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .dose-1 { background: #e8f5e9; color: #27ae60; }
+        .dose-2 { background: #fdecea; color: #c0392b; }
+        .empty-state { text-align: center; padding: 60px 20px; color: #888; }
+        .chart-container {
+            background: white;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            max-width: 100%;
+        }
+        .disclaimer {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 10px;
+            font-style: italic;
+        }
+        input[type="date"] {
+            padding: 6px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        .dose-total-banner {
+            background: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        .dose-total-number {
+            font-size: 1.6em;
+            font-weight: bold;
+            margin-left: 10px;
+            color: #3498db;
+        }
+        .advice { font-weight: bold; }
+.advice-same { color: #27ae60; }
+.advice-increase { color: #c0392b; }
+    </style>
+</head>
+<body>
+
+    <h1>Breath VOC Monitor</h1>
+    <p class="subtitle">Live log of every breath measurement, prediction, and dosage recommendation. Refreshes every 10 seconds.</p>
+
+    {% if annotated %}
+   <table>
+    <thead>
+        <tr>
+            <th>Date &amp; Time</th>
+            <th>Prediction</th>
+            <th>MQ135 Mean</th>
+            <th>MQ7 Mean</th>
+            <th>Dosage Advice</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in annotated %}
+        <tr class="{% if item.spike %}spike-row{% endif %}">
+            <td>{{ item.record.timestamp|date:"d M Y, H:i:s" }}</td>
+
+            <td class="pred-{{ item.record.prediction }}">
+              
+{% if item.record.prediction == "COPD" or item.record.prediction == "copd" %}
+
+    Uncontrolled
+
+{% elif item.record.prediction == "CONTROL" or item.record.prediction == "control" %}
+
+    Controlled
+
+{% else %}
+
+    {{ item.record.prediction  }}
+
+{% endif %}
+
+
+            </td>
+
+            <td>{{ item.record.mq135_mean|floatformat:1 }}</td>
+            <td>{{ item.record.mq137_mean|floatformat:1 }}</td>
+
+            <td>
+                {% if item.record.prediction == "CONTROL" %}
+                    <span class="advice advice-same">Continue with the same dosage</span>
+                {% elif item.record.prediction == "COPD" %}
+                    <span class="advice advice-increase">Increment the dosage</span>
+                {% else %}
+                    &mdash;
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+    {% else %}
+    <div class="empty-state">
+        <p>No breath measurements recorded yet.</p>
+        <p>Press ENTER on the ESP32 to take a breath measurement -- it'll show up here automatically.</p>
+    </div>
+    {% endif %}
+
+    <h2>Doses Consumed Per Day</h2>
+    <div class="chart-container">
+        <canvas id="dosageChart" height="80"></canvas>
+    </div>
+    <p class="disclaimer">
+        Dosage rule: base schedule is 1 dose each at morning/afternoon/night as prescribed.
+        If confidence rises by 0.30 or more since the previous breath reading, 2 doses are
+        recommended for that slot instead of 1 (see the "Recommended Dose" column above).
+        This chart shows actual doses taken (from the inhaler pressure sensor), not the
+        recommendation. This is a placeholder rule for demo purposes, not a clinically
+        validated dosing algorithm.
+    </p>
+
+    <script>
+        const dosageCtx = document.getElementById('dosageChart').getContext('2d');
+        new Chart(dosageCtx, {
+            type: 'line',
+            data: {
+                labels: {{ dose_chart_labels|safe }},
+               datasets: [{
+    label: 'Doses Taken',
+    data: {{ dose_chart_counts|safe }},
+    borderColor: '#e67e22',
+    borderWidth: 2,
+    fill: false,
+    tension: 0.2,
+    pointRadius: 4,
+    pointBackgroundColor: '#e67e22',
+}]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        min: 0,
+                        title: { display: true, text: 'Number of Doses' },
+                        ticks: { stepSize: 1 }
+                    },
+                    x: {
+                        title: { display: true, text: 'Day' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    </script>
+
+    <h2>Recent Inhaler Doses</h2>
+
+    <form method="get" style="margin-bottom: 15px;">
+        <label for="date">Filter by date: </label>
+        <input type="date" id="date" name="date" value="{{ selected_date }}"
+               onchange="this.form.submit()">
+    </form>
+
+    <div class="dose-total-banner">
+        Total doses taken on {{ selected_date }}:
+        <span class="dose-total-number">{{ total_doses_for_day }}</span>
+    </div>
+
+    {% if dose_records %}
+    <table>
+        <thead>
+            <tr>
+                <th>Logged At</th>
+                <th>Dose #</th>
+                <th>Interval Since Previous</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in dose_records %}
+            <tr>
+                <td>{{ d.timestamp|date:"d M Y, H:i:s" }}</td>
+                <td>{{ d.dose_number }}</td>
+                <td>{{ d.interval_seconds }} sec</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No doses logged on {{ selected_date }}.</p>
+    </div>
+    {% endif %}
+
+</body>
+</html>

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Manual Breath Data Entry</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background: #f5f6f8;
+            color: #222;
+            max-width: 700px;
+        }
+
+        h1 {
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 25px;
+        }
+
+        .sensor-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .sensor-section h2 {
+            margin-top: 0;
+            font-size: 1.1em;
+            color: #2c3e50;
+        }
+
+        .field-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .field-row label {
+            flex: 0 0 220px;
+            font-size: 0.95em;
+        }
+
+        .field-row input {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+
+        button {
+            background: #2c3e50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1a252f;
+        }
+
+        .error-box {
+            background: #fdecea;
+            color: #c0392b;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        .result-box {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .result-box .prediction {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+
+        .result-box .confidence-bar-bg {
+            background: rgba(255,255,255,0.2);
+            border-radius: 4px;
+            height: 12px;
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .result-box .confidence-bar-fill {
+            background: #3498db;
+            height: 12px;
+            border-radius: 4px;
+        }
+
+        .disclaimer {
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
+        .nav-link {
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+        .advice {
+    margin-top: 10px;
+    font-size: 1.05em;
+    font-weight: bold;
+}
+
+.advice-same {
+    color: #2ecc71;
+}
+
+.advice-increase {
+    color: #f39c12;
+}
+    </style>
+</head>
+
+<body>
+
+    <a class="nav-link" href="/results/">&larr; Back to dashboard</a>
+
+    <h1>Manual Breath Data Entry</h1>
+
+    <p class="subtitle">
+        Type in a reading's values (e.g. copied from Serial Monitor) and run it
+        through the model without needing the ESP32 connected.
+    </p>
+
+
+    {% if error %}
+    <div class="error-box">
+        {{ error }}
+    </div>
+    {% endif %}
+
+
+    {% if result %}
+    <div class="result-box">
+
+        <div>Prediction:</div>
+
+        <div class="prediction">
+    {{ result.prediction }}
+</div>
+
+<div class="advice">
+    {% if result.prediction == "CONTROL" %}
+        <span class="advice-same">
+            Continue with the same dosage
+        </span>
+
+    {% elif result.prediction == "COPD" %}
+        <span class="advice-increase">
+            Increment the dosage
+        </span>
+
+    {% else %}
+        &mdash;
+    {% endif %}
+</div>
+
+        <div>
+            Raw class: {{ result.raw_class }}
+            &nbsp;|&nbsp;
+            Confidence: {{ result.confidence|floatformat:3 }}
+        </div>
+
+        <div class="confidence-bar-bg">
+            <div
+                class="confidence-bar-fill"
+                style="width: {% widthratio result.confidence 1 100 %}%;">
+            </div>
+        </div>
+
+    </div>
+
+    <p class="disclaimer">
+        Saved as record #{{ result.record_id }}. Note: class label meaning and
+        the exact feature order this model expects are still unconfirmed
+        (see views.py) -- treat this output as a pipeline test, not a certain diagnosis.
+    </p>
+    {% endif %}
+
+
+    <form method="post">
+
+        {% csrf_token %}
+
+
+        <!-- MQ135 -->
+
+        <div class="sensor-section">
+
+            <h2>MQ135</h2>
+
+            {% for field_name, field_label in fields %}
+
+                {% if "mq135" in field_name %}
+
+                <div class="field-row">
+
+                    <label for="{{ field_name }}">
+                        {{ field_label }}
+                    </label>
+
+                    {% if field_name == "mq135_min" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="1.390"
+                        required
+                    >
+
+                    {% elif field_name == "mq135_max" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="1.409"
+                        required
+                    >
+
+                    {% elif field_name == "mq135_mean" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="1.407"
+                        required
+                    >
+
+                    {% elif field_name == "mq135_baseline" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="1.409"
+                        required
+                    >
+
+                    {% elif field_name == "mq135_change" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="0.000"
+                        required
+                    >
+
+                    {% endif %}
+
+                </div>
+
+                {% endif %}
+
+            {% endfor %}
+
+        </div>
+
+
+        <!-- MQ137 -->
+
+        <div class="sensor-section">
+
+            <h2>MQ137</h2>
+
+            {% for field_name, field_label in fields %}
+
+                {% if "mq137" in field_name %}
+
+                <div class="field-row">
+
+                    <label for="{{ field_name }}">
+                        {{ field_label }}
+                    </label>
+
+                    {% if field_name == "mq137_min" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="2.798"
+                        required
+                    >
+
+                    {% elif field_name == "mq137_max" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="2.808"
+                        required
+                    >
+
+                    {% elif field_name == "mq137_mean" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="2.800"
+                        required
+                    >
+
+                    {% elif field_name == "mq137_baseline" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="2.803"
+                        required
+                    >
+
+                    {% elif field_name == "mq137_change" %}
+                    <input
+                        type="number"
+                        step="any"
+                        id="{{ field_name }}"
+                        name="{{ field_name }}"
+                        value="0.004"
+                        required
+                    >
+
+                    {% endif %}
+
+                </div>
+
+                {% endif %}
+
+            {% endfor %}
+
+        </div>
+
+
+        <button type="submit">
+            Run Prediction
+        </button>
+
+    </form>
+
+</body>
+</html>
